@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // directUrl = env("DIRECT_URL") // Uncomment if using Supabase pooling
+}
+
+// --- ENUMS ---
+enum DelegateCategory {
+  STUDENT
+  FACULTY
+  INDUSTRY
+  FOREIGN
+}
+
+enum PaymentStatus {
+  PROCESSING         // The AI is currently analyzing it
+  ACTION_REQUIRED    // AI failed, user must re-upload via magic link
+  PENDING_APPROVAL   // AI passed, waiting for Admin
+  COMPLETED          // Admin approved
+  FAILED             // Admin fully rejected
+}
+enum PresentationType {
+  ORAL
+  POSTER
+}
+
+enum AbstractStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+// --- MODELS ---
+model Delegate {
+  id          String           @id @default(uuid())
+  referenceId String           @unique
+  fullName    String
+  affiliation String
+  email       String           @unique
+  category    DelegateCategory
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  payment     Payment?
+  abstracts   Abstract[]
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  delegateId      String        @unique
+  utrNumber       String        @unique
+  screenshotUrl   String        
+  status          PaymentStatus @default(PROCESSING) // Starts in Processing
+  actionToken     String?       @unique // Secret UUID for the email link
+  aiValidationLog String?       
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  delegate        Delegate      @relation(fields: [delegateId], references: [id], onDelete: Cascade)
+}
+
+model Abstract {
+  id               String           @id @default(uuid())
+  delegateId       String
+  title            String
+  authorNames      String           // Stored as a comma-separated string for simplicity
+  presentationType PresentationType
+  documentUrl      String           // URL from Supabase Storage / Vercel Blob
+  status           AbstractStatus   @default(PENDING)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  delegate         Delegate         @relation(fields: [delegateId], references: [id], onDelete: Cascade)
+}
+
+model Submission {
+  id          String   @id @default(uuid())
+  title       String
+  authors     String
+  type        String   // Oral or Poster
+  fileUrl     String
+  referenceId String   @unique
+  createdAt   DateTime @default(now())
+}
