@@ -43,7 +43,7 @@ export default function RegistrationPage() {
   const formRef = useRef<HTMLDivElement>(null);
 
   const pricingTiers = [
-    { id: "Students", label: "Scholars", title: "Students", price: "Rs. 3000", features: ["Access to all sessions", "Conference Kit", "Digital Certificates"] },
+    { id: "Student", label: "Scholars", title: "Student", price: "Rs. 3000", features: ["Access to all sessions", "Conference Kit", "Digital Certificates"] },
     { id: "Faculty", label: "Academia", title: "Faculty", price: "Rs. 5000", features: ["All session access", "Networking dinner", "Delegate materials"], popular: true },
     { id: "Industry", label: "Professional", title: "Industry", price: "Rs. 10000", features: ["B2B Networking", "Booth visitation", "Priority seating"] },
     { id: "Foreign", label: "International", title: "Foreign", price: "Rs. 30000", features: ["Concierge support", "Airport transfer", "Premium access"] }

@@ -5,7 +5,6 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  // directUrl = env("DIRECT_URL") // Uncomment if using Supabase pooling
 }
 
 // --- ENUMS ---
@@ -17,14 +16,25 @@ enum DelegateCategory {
 }
 
 enum PaymentStatus {
-  PROCESSING         // The AI is currently analyzing it
-  ACTION_REQUIRED    // AI failed, user must re-upload via magic link
-  PENDING_APPROVAL   // AI passed, waiting for Admin
-  COMPLETED          // Admin approved
-  FAILED             // Admin fully rejected
+  PROCESSING         
+  ACTION_REQUIRED    
+  PENDING_APPROVAL   
+  COMPLETED          
+  FAILED             
 }
 
 // --- MODELS ---
+
+// NEW: Admin User Table for audit logs and individual logins
+model AdminUser {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String   // Note: For production, hash this. For manual Prisma Studio entry, plaintext is okay temporarily.
+  name      String
+  role      String   @default("System Administrator")
+  createdAt DateTime @default(now())
+}
+
 model Delegate {
   id                String           @id @default(uuid())
   referenceId       String           @unique
@@ -32,8 +42,8 @@ model Delegate {
   affiliation       String
   email             String           @unique
   category          DelegateCategory
-  participationType String           @default("GENERAL_ATTENDEE") // GENERAL_ATTENDEE, ORAL_PRESENTER, POSTER_PRESENTER
-  linkedAbstractId  String?          // The ABS-XXXXXX-26 ID, if they have one
+  participationType String           @default("GENERAL_ATTENDEE") 
+  linkedAbstractId  String?          
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -45,9 +55,10 @@ model Payment {
   delegateId      String        @unique
   utrNumber       String        @unique
   screenshotUrl   String        
-  status          PaymentStatus @default(PROCESSING) // Starts in Processing
-  actionToken     String?       @unique // Secret UUID for the email link
+  status          PaymentStatus @default(PROCESSING) 
+  actionToken     String?       @unique 
   aiValidationLog String?       
+  reviewedBy      String?       // NEW: Audit log trail
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -56,12 +67,13 @@ model Payment {
 
 model Submission {
   id             String   @id @default(uuid())
-  referenceId    String   @unique // ABS-XXXXXX-26
+  referenceId    String   @unique 
   title          String
   authors        String
-  presenterEmail String   // CRITICAL: We need this to link to Delegate!
-  type           String   // Oral Presentation or Poster Presentation
+  presenterEmail String   
+  type           String   
   fileUrl        String
-  status         String   @default("PENDING_REVIEW") // PENDING_REVIEW, ACCEPTED_ORAL, ACCEPTED_POSTER, REJECTED
+  status         String   @default("PENDING_REVIEW") 
+  reviewedBy     String?  // NEW: Audit log trail
   createdAt      DateTime @default(now())
 }

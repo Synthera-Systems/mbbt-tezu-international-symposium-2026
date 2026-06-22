@@ -25,6 +25,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // --- FIX: Map the incoming category to the exact Prisma Enum ---
+    let mappedCategory: any = "STUDENT"; // Default fallback
+    const upperCategory = category.toUpperCase();
+    
+    if (upperCategory.includes("STUDENT")) mappedCategory = "STUDENT";
+    else if (upperCategory.includes("FACULTY")) mappedCategory = "FACULTY";
+    else if (upperCategory.includes("INDUSTRY")) mappedCategory = "INDUSTRY";
+    else if (upperCategory.includes("FOREIGN") || upperCategory.includes("INTERNATIONAL")) mappedCategory = "FOREIGN";
+    // ----------------------------------------------------------------
+
     // 2. Check for duplicates instantly
     const existingUser = await prisma.delegate.findUnique({
       where: { email },
@@ -60,16 +70,16 @@ export async function POST(request: Request) {
         fullName,
         affiliation,
         email,
-        category: category.toUpperCase(),
-        participationType: participationType || "GENERAL_ATTENDEE", // NEW: Save to DB
-        linkedAbstractId: linkedAbstractId || null,                 // NEW: Save to DB
+        category: mappedCategory, // Safe, mapped Enum value
+        participationType: participationType || "GENERAL_ATTENDEE", 
+        linkedAbstractId: linkedAbstractId || null,                 
         referenceId,
         payment: {
           create: {
             utrNumber,
             screenshotUrl,
             actionToken,
-            status: "PROCESSING", // Setting status to match the updated Enum
+            status: "PROCESSING", 
           }
         }
       },

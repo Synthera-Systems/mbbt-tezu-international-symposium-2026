@@ -5,6 +5,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { ThemeProvider } from "@/context/ThemeContext";
+import ConditionalLayout from "@/components/ConditionalLayout";
 
 // Bind fonts to the CSS variables defined in globals.css
 const playfair = Playfair_Display({ 
@@ -38,11 +39,9 @@ export default function RootLayout({
           className={`${playfair.variable} ${inter.variable} antialiased min-h-screen flex flex-col bg-background text-on-background`}
         >
         <ThemeProvider>
-          <Navbar />
-          <main className="flex-grow flex flex-col">
+          <ConditionalLayout>
             {children}
-          </main>
-          <Footer />
+          </ConditionalLayout>
         </ThemeProvider>
       </body>
     </html>

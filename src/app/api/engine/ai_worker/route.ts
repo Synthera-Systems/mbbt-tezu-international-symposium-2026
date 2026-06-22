@@ -6,14 +6,35 @@ import { sendRegistrationVerifiedEmail, sendActionRequiredEmail } from "@/lib/em
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
 
+// 1. Add a retry helper function to handle 503 Traffic Spikes
+async function generateWithRetry(model: any, prompt: string, imagePart: any, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await model.generateContent([prompt, imagePart]);
+    } catch (error: any) {
+      // If it's a 503 error and we have retries left, wait and try again
+      if (error?.status === 503 && i < maxRetries - 1) {
+        const delayMs = Math.pow(2, i) * 1500; // Wait 1.5s, then 3s, then 6s
+        console.log(`[AI Worker] Gemini API overloaded (503). Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        throw error; // Throw if it's not a 503, or if we ran out of retries
+      }
+    }
+  }
+}
+
 export async function POST(request: Request) {
+  // Define variables here so the catch block can use them for the fallback
+  let delegateId, utrNumber, screenshotUrl, email, fullName, referenceId, actionToken;
+
   try {
     const body = await request.json();
-    const { delegateId, utrNumber, screenshotUrl, email, fullName, referenceId, actionToken } = body;
+    ({ delegateId, utrNumber, screenshotUrl, email, fullName, referenceId, actionToken } = body);
 
     console.log(`[AI Worker] Starting verification for ${referenceId}...`);
 
-    // 1. Fetch the image directly from Supabase Storage
+    // 2. Fetch the image directly from Supabase Storage
     const imageResponse = await fetch(screenshotUrl);
     if (!imageResponse.ok) throw new Error("Failed to download image from storage");
     
@@ -21,7 +42,7 @@ export async function POST(request: Request) {
     const base64Image = Buffer.from(arrayBuffer).toString('base64');
     const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
 
-    // 2. Run the Gemini Vision Analysis
+    // 3. Run the Gemini Vision Analysis
     const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
     const prompt = `
       You are a strict, highly accurate financial auditing AI for an academic symposium. 
@@ -41,11 +62,15 @@ export async function POST(request: Request) {
     `;
 
     const imagePart = { inlineData: { data: base64Image, mimeType } };
-    const result = await model.generateContent([prompt, imagePart]);
-    const responseText = result.response.text().replace(/```json\n?|\n?```/g, "").trim();
+    
+    // 4. Use the robust retry function instead of a single call
+    const result = await generateWithRetry(model, prompt, imagePart);
+    
+    const responseText = result?.response.text().replace(/```json\n?|\n?```/g, "").trim();
+    if (!responseText) throw new Error("Empty response from AI");
     const aiData = JSON.parse(responseText);
 
-    // 3. Update the Database based on Gemini's decision
+    // 5. Update the Database based on Gemini's decision
     const newStatus = aiData.isValidReceipt ? "PENDING_APPROVAL" : "ACTION_REQUIRED";
     
     await prisma.payment.update({
@@ -56,21 +81,40 @@ export async function POST(request: Request) {
       }
     });
 
-    // 4. Log the outcome and trigger the correct Nodemailer email!
+    // 6. Log the outcome and trigger the correct Nodemailer email
     if (aiData.isValidReceipt) {
       console.log(`[AI Worker] SUCCESS: ${referenceId} verified.`);
-      // Run email in background (no await)
       sendRegistrationVerifiedEmail(email, fullName, referenceId); 
     } else {
       console.log(`[AI Worker] FAILED: ${referenceId} rejected. Reason: ${aiData.reason}`);
-      // Run email in background (no await)
       sendActionRequiredEmail(email, fullName, actionToken, aiData.reason);
     }
 
     return NextResponse.json({ success: true, status: newStatus });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("[AI Worker Fatal Error]:", error);
-    return NextResponse.json({ error: "Background processing failed" }, { status: 500 });
+
+    // 7. Graceful Fallback: Push to manual review if AI completely fails
+    if (delegateId) {
+      console.log(`[AI Worker] Routing ${referenceId || delegateId} to Manual Review due to API failure.`);
+      
+      try {
+        await prisma.payment.update({
+          where: { delegateId },
+          data: {
+            status: "PENDING_APPROVAL", // Route to Admin Dashboard safely
+            aiValidationLog: `Manual Review Required: AI Engine failed to process receipt. Error: ${error.message || 'Unknown'}`
+          }
+        });
+      } catch (dbError) {
+        console.error("[AI Worker] Failed to update fallback status:", dbError);
+      }
+    }
+
+    return NextResponse.json(
+      { error: "AI processing failed, routed to manual review." }, 
+      { status: 500 }
+    );
   }
 }
